@@ -20,7 +20,6 @@
 #define STEP_PIN D2
 #define ENDSTOP_PIN D5
 #define CALIBRATE_PIN D6
-#define MICROSTEP_PIN D7
 #define ENABLE_PIN D8
 
 // Define motor interface type
@@ -30,11 +29,6 @@
 AccelStepper blinds(STEPPER_INTERFACE, STEP_PIN, DIR_PIN);
 
 const int DIR = -1;
-const int HIGH_SPEED_THRESHOLD = 20;
-const int LOW_SPEED = 200;
-const int LOW_SPEED_ACCELERATION = 100;
-const int HIGH_SPEED = 300;
-const int HIGH_SPEED_ACCELERATION = 150;
 
 int POSITION = 100;
 int MAX_POSITION_STEPS = 100;
@@ -62,15 +56,9 @@ void setHighPowerMode() {
 }
 
 void setLowSpeed() {
-  blinds.setMaxSpeed(LOW_SPEED);
-  blinds.setAcceleration(LOW_SPEED_ACCELERATION);
-  blinds.setSpeed(LOW_SPEED);
 }
 
 void setHighSpeed() {
-  blinds.setMaxSpeed(HIGH_SPEED);
-  blinds.setAcceleration(HIGH_SPEED_ACCELERATION);
-  blinds.setSpeed(HIGH_SPEED);
 }
 
 long eeprom_readLong(int address) {
@@ -150,21 +138,19 @@ void ICACHE_RAM_ATTR endStopInterrupt() {
     // LED_ON = !LED_ON;
     // digitalWrite(LED_BUILTIN, LED_ON);
 
-    if (HOMING || CALIBRATING) {
-      Serial.println("ENDSTOP FALLING INTERRUPT DEBOUNCED");
-      POSITION = 100;
-      HOMING = false;
-      blinds.stop();
-      blinds.setCurrentPosition(0);
+    Serial.println("ENDSTOP FALLING INTERRUPT DEBOUNCED");
+    POSITION = 100;
+    HOMING = false;
+    blinds.stop();
+    blinds.setCurrentPosition(0);
 
-      if (CALIBRATING) {
-        // if we're calibrating we can move down now
-        setHighPowerMode();
-        setHighSpeed();
-        blinds.move(100000 * DIR);
-      } else {
-        setLowPowerMode();
-      }
+    setHighPowerMode();
+    if (CALIBRATING) {
+      // if we're calibrating we can move down now
+      blinds.move(100000 * DIR);
+    } else {
+      // if we're not calibrating move away a bit from the endstop
+      blinds.moveTo((int)(MAX_POSITION_STEPS * 0.01) * DIR);
     }
   }
 
@@ -176,13 +162,13 @@ void setupEndStopInterrupt() {
 }
 
 void homeBlinds() {
+  HOMING = true;
   if (digitalRead(ENDSTOP_PIN)) {
-    HOMING = true;
     setHighPowerMode();
-    setHighSpeed();
     blinds.move(-10000000 * DIR);
   } else {
-    setLowPowerMode();
+    setHighPowerMode();
+    blinds.moveTo((int)(MAX_POSITION_STEPS * 0.01) * DIR);
   }
 }
 
@@ -194,7 +180,9 @@ void homeBlinds() {
 void setupBlinds() {
   // set the maximum speed, acceleration factor,
   // initial speed and the target position
-  setHighSpeed();
+  blinds.setMaxSpeed(300.0);
+  blinds.setAcceleration(150.0);
+  blinds.setSpeed(300.0);
 }
 
 void ICACHE_RAM_ATTR calibrationInterrupt() {
@@ -223,7 +211,6 @@ void ICACHE_RAM_ATTR calibrationInterrupt() {
       if (!digitalRead(ENDSTOP_PIN)) {
         // if endstop is pressed, move down to calibrate
         setHighPowerMode();
-        setHighSpeed();
         blinds.move(100000 * DIR);
       } else {
         // else start with homing
@@ -246,16 +233,11 @@ void blindStopR() {
 
 void moveTo(int new_position) {
   TARGET_POSITION = new_position;
+  setHighPowerMode();
   if (new_position == 100) {
     homeBlinds();
   } else {
-    setHighPowerMode();
-    if (abs(TARGET_POSITION - POSITION) <= HIGH_SPEED_THRESHOLD) {
-      setLowSpeed();
-    } else {
-      setHighSpeed();
-    }
-    blinds.moveTo(((long)((float)MAX_POSITION_STEPS * (1 - ((float)TARGET_POSITION / 100.0)))) * DIR);
+    blinds.moveTo((int)(MAX_POSITION_STEPS * (1 - (TARGET_POSITION / 100.0))) * DIR);
   }
 }
 
@@ -268,6 +250,7 @@ void blindSetPositionR() {
     Serial.print("TARGET_POSITION: ");
     Serial.println(TARGET_POSITION);
     server.send(200, "application/json", "{\"success\":true}");
+    // server.send(200, "application/json", "{\"success\":true}");
   } else {
     server.send(500, "application/json", "{\"success\":false}");
   }
@@ -275,7 +258,7 @@ void blindSetPositionR() {
 
 void blindGetPositionR() {
   Serial.println("blindGetPositionR");
-  server.send(200, "application/json", "{\"ShutterPosition1\":" + String((int)POSITION) + "}");
+  server.send(200, "application/json", "{\"ShutterPosition1\":" + String(POSITION) + "}");
 }
 
 void setupServer() {
@@ -293,8 +276,8 @@ void setup() {
   pinMode(CALIBRATE_PIN, INPUT_PULLUP);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
-  pinMode(MICROSTEP_PIN, OUTPUT);
-  // digitalWrite(MICROSTEP_PIN, HIGH);
+  // pinMode(D7, OUTPUT);
+  // digitalWrite(D7, HIGH);
 
   EEPROM.begin(512);
   loadCurrentState();
@@ -310,9 +293,14 @@ void setup() {
 }
 
 void loop() {
-  POSITION = 100 - (int)((float)(blinds.currentPosition() * DIR) / (float)MAX_POSITION_STEPS);
+  // if (blinds.distanceToGo() == 0) {
+  // }
+  POSITION = 101 - (int)((float)(blinds.currentPosition() * DIR) / (float)MAX_POSITION_STEPS);
+  if (POSITION > 100) {
+    POSITION = 100;
+  }
 
-  if (blinds.distanceToGo() == 0 && !HOMING && !CALIBRATING) {
+  if (blinds.distanceToGo() == 0 && !CALIBRATING) {
     delay(1000);
     setLowPowerMode();
   }
