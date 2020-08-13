@@ -1,13 +1,3 @@
-/**
- * @TODO
- * - [ ] add I2C LCD for debugging
- * - [ ] write calibration code
- * - [ ] save calibration to EEPROM
- * - [ ] read calibration from EEPROM
- * - [ ] implement endstop interrupt (in loop now, is ok?)
- * - [ ] connect to wifi
- * - [ ] listen on web server for commands
- */
 #include <Arduino.h>
 #include <DoubleResetDetect.h>
 #include <ESP8266WiFi.h>
