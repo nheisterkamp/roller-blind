@@ -10,6 +10,7 @@
 #define STEP_PIN D2
 #define ENDSTOP_PIN D4
 #define CALIBRATE_PIN D6
+#define MICROSTEP_PIN D7
 #define ENABLE_PIN D8
 
 // Define motor interface type
@@ -45,12 +46,6 @@ void setHighPowerMode() {
   digitalWrite(ENABLE_PIN, 0);
 }
 
-void setLowSpeed() {
-}
-
-void setHighSpeed() {
-}
-
 long eeprom_readLong(int address) {
   return ((long)EEPROM.read(address) << 24) +
         ((long)EEPROM.read(address + 1) << 16) +
@@ -72,63 +67,40 @@ void clearCurrentState() {
 }
 
 void saveCurrentState() {
-  // Serial.println("save to EEPROM");
   EEPROM.write(0, POSITION);
   eeprom_writeLong(1, MAX_POSITION_STEPS);
   EEPROM.commit();
 }
 
 void loadCurrentState() {
-  // Serial.println("load from EEPRxOM");
   long position = EEPROM.read(0);
-  // Serial.println("read position: " + String(position));
   long maxPositionSteps = eeprom_readLong(1);
-  // Serial.println("read maxPositionSteps: " + String(maxPositionSteps));
 
   if (position >= 0 && position <= 100 && maxPositionSteps > 0) {
-    // Serial.println("Seems legit, load from memory");
     POSITION = position;
     MAX_POSITION_STEPS = maxPositionSteps;
   } else {
-    // Serial.println("Probably garbage data, ignore");
   }
 }
 
 void setupWifi() {
   WiFi.begin(SSID, PASSWORD);
 
-  // Serial.print("Connecting");
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
-    // Serial.print(".");
     digitalWrite(LED_BUILTIN, HIGH);
     delay(100);
     digitalWrite(LED_BUILTIN, LOW);
   }
   digitalWrite(LED_BUILTIN, LOW);
-
-  // Serial.println();
-
-  // Serial.print("Connected, IP address: ");
-  // Serial.println(WiFi.localIP());
-
-  // delay(2000);
 }
 
-// bool LED_ON = false;
-
 void ICACHE_RAM_ATTR endStopInterrupt() {
-  // Serial.println("endStopInterrupt()");
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  // Serial.println("ENDSTOP FALLING INTERRUPT " + String(interrupt_time));
 
   if (interrupt_time - last_interrupt_time > 200) {
-    // LED_ON = !LED_ON;
-    // digitalWrite(LED_BUILTIN, LED_ON);
-
-    // Serial.println("ENDSTOP FALLING INTERRUPT DEBOUNCED");
     if (!HOMING && !CALIBRATING) {
       return;
     }
@@ -178,19 +150,11 @@ void homeBlinds() {
     HOMING = true;
     setHighPowerMode();
     blinds.move(-10000000 * DIR);
-  // } else {
-  //   setHighPowerMode();
-  //   blinds.moveTo((int)(MAX_POSITION_STEPS * 0.01) * DIR);
   } else if (CALIBRATING) {
     setHighPowerMode();
     blinds.move(10000000 * DIR);
   }
 }
-
-// void calibrateBlinds() {
-// 	CALIBRATING = true;
-// 	homeBlinds();
-// }
 
 void setupBlinds() {
   // set the maximum speed, acceleration factor,
@@ -201,13 +165,10 @@ void setupBlinds() {
 }
 
 void ICACHE_RAM_ATTR calibrationInterrupt() {
-  // Serial.println("calibrationInterrupt()");
   static unsigned long last_interrupt_time = 0;
   unsigned long interrupt_time = millis();
-  // Serial.println("CALIBRATION RISING INTERRUPT " + String(interrupt_time));
 
   if (interrupt_time - last_interrupt_time > 200) {
-    // Serial.println("CALIBRATION RISING INTERRUPT DEBOUNCED");
 
     if (CALIBRATING) {
       // if we're already calibrating, we are done now
@@ -247,7 +208,6 @@ void setupCalibrationInterrupt() {
 }
 
 void blindStopR() {
-  // Serial.println("blindStopR");
   blinds.stop();
   delay(1000);
   setLowPowerMode();
@@ -255,7 +215,6 @@ void blindStopR() {
 }
 
 void blindCalibrateR() {
-  // Serial.println("blindCalibrateR");
   CALIBRATING = true;
   homeBlinds();
   server.send(200, "application/json", "{\"success\":true}");
@@ -280,19 +239,14 @@ void blindSetPositionR() {
   int requested_position = server.arg("pos").toInt();
 
   if (requested_position >= 0 && requested_position <= 100) {
-    // TARGET_POSITION = requested_position;
     moveTo(requested_position);
-    // Serial.print("TARGET_POSITION: ");
-    // Serial.println(TARGET_POSITION);
     server.send(200, "application/json", "{\"success\":true}");
-    // server.send(200, "application/json", "{\"success\":true}");
   } else {
     server.send(500, "application/json", "{\"success\":false}");
   }
 }
 
 void blindGetPositionR() {
-  // Serial.println("blindGetPositionR");
   server.send(200, "application/json", "{\"ShutterPosition1\":" + String(POSITION) + "}");
 }
 
@@ -307,14 +261,11 @@ void setupServer() {
 }
 
 void setup() {
-  // Serial.begin(9600);
-
   pinMode(ENDSTOP_PIN, INPUT_PULLUP);
-  // pinMode(CALIBRATE_PIN, INPUT);
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(ENABLE_PIN, OUTPUT);
-  pinMode(D7, OUTPUT);
-  digitalWrite(D7, HIGH);
+  pinMode(MICROSTEP_PIN, OUTPUT);
+  digitalWrite(MICROSTEP_PIN, HIGH);
 
   EEPROM.begin(512);
   loadCurrentState();
@@ -323,21 +274,12 @@ void setup() {
   setHighPowerMode();
   setupWifi();
   setupEndStopInterrupt();
-  // setupCalibrationInterrupt();
 
   homeBlinds();
   setupServer();
 }
 
 void loop() {
-  // if (blinds.distanceToGo() == 0) {
-  // }
-  // POSITION = 101 - (int)((float)(blinds.currentPosition() * DIR) / (float)MAX_POSITION_STEPS);
-  // POSITION = 100 - (int)((float)(blinds.currentPosition() * DIR) / (float)MAX_POSITION_STEPS);
-  // if (POSITION > 100) {
-  //   POSITION = 100;
-  // }
-
   if (blinds.distanceToGo() == 0 && !HOMING && !CALIBRATING) {
     delay(1000);
     setLowPowerMode();
