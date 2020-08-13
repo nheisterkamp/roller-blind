@@ -280,7 +280,9 @@ void setup() {
 }
 
 void loop() {
-  if (blinds.distanceToGo() == 0 && !HOMING && !CALIBRATING) {
+  if (blinds.distanceToGo() <= 5 && !HOMING && !CALIBRATING) {
+    blinds.setCurrentPosition(0);
+    blinds.runToPosition();
     delay(1000);
     setLowPowerMode();
   }
