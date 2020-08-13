@@ -53,7 +53,7 @@ long eeprom_readLong(int address) {
         (long)EEPROM.read(address + 3);
 }
 
-long eeprom_writeLong(int address, long value) {
+void eeprom_writeLong(int address, long value) {
   EEPROM.write(address, (value >> 24) & 0xFF);
   EEPROM.write(address + 1, (value >> 16) & 0xFF);
   EEPROM.write(address + 2, (value >> 8) & 0xFF);
@@ -61,7 +61,7 @@ long eeprom_writeLong(int address, long value) {
 }
 
 void clearCurrentState() {
-  for (int i = 0 ; i < EEPROM.length() ; i++) {
+  for (unsigned int i = 0 ; i < EEPROM.length() ; i++) {
     EEPROM.write(i, 0);
   }
 }
